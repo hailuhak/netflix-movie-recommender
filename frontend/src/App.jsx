@@ -50,11 +50,16 @@ function App() {
    const [allMovies, setAllMovies] = useState([]);
    const [moviesLoading, setMoviesLoading] = useState(true);
    const [moviesError, setMoviesError] = useState('');
-
+   const [currentIndex, setCurrentIndex] = useState(0);
    const [selectedMovie, setSelectedMovie] = useState('');
    const [recommendations, setRecommendations] = useState([]);
    const [loading, setLoading] = useState(false);
    const [error, setError] = useState('');
+
+
+  useEffect(() => {
+     setCurrentIndex(0);
+  }, [search]);
 
    // Load the full movie dataset from Flask.
    useEffect(() => {
@@ -79,24 +84,28 @@ function App() {
 
    // Keep the original poster cards when no search is entered.
    // Show matching titles from the complete dataset when searching.
-   const displayMovies = search.trim()
-      ? filteredMovies.slice(0, 30).map((title) => {
-           const featuredMovie = sampleMovies.find(
-              (movie) => movie.title.toLowerCase() === title.toLowerCase(),
-           );
 
-           return (
-              featuredMovie || {
-                 id: title,
-                 title,
-                 year: null,
-                 genre: 'Movie',
-                 rating: null,
-                 image: null,
-              }
-           );
-        })
-      : sampleMovies;
+const titlesToDisplay = search.trim() ? filteredMovies : allMovies;
+
+const displayMovies = titlesToDisplay.map((title) => {
+   const featuredMovie = sampleMovies.find(
+      (movie) => movie.title.toLowerCase() === title.toLowerCase(),
+   );
+
+   return (
+      featuredMovie || {
+         id: title,
+         title,
+         year: null,
+         genre: 'Movie',
+         rating: null,
+         image: null,
+      }
+   );
+});
+
+const visibleMovies = displayMovies.slice(currentIndex, currentIndex + 5);
+
 
    async function handleRecommend(movieTitle) {
       setSelectedMovie(movieTitle);
@@ -187,51 +196,92 @@ function App() {
                   </p>
                ) : displayMovies.length > 0 ? (
                   <>
-                     <div className='movie-grid'>
-                        {displayMovies.map((movie) => (
-                           <article className='movie-card' key={movie.id}>
-                              {movie.image ? (
-                                 <img
-                                    src={movie.image}
-                                    alt={`${movie.title} poster`}
-                                    loading='lazy'
-                                 />
-                              ) : (
-                                 <div className='poster-placeholder'>
-                                    <span>CINEVERSE</span>
-                                    <strong>{movie.title}</strong>
+                     <div className='movie-carousel'>
+                        <button
+                           className='carousel-arrow'
+                           onClick={() =>
+                              setCurrentIndex((index) => Math.max(0, index - 1))
+                           }
+                           disabled={currentIndex === 0}
+                           aria-label='Previous movie'
+                           title='Previous movie'
+                        >
+                           &#8592;
+                        </button>
+
+                        <div className='movie-grid'>
+                           {visibleMovies.map((movie) => (
+                              <article className='movie-card' key={movie.id}>
+                                 {movie.image ? (
+                                    <img
+                                       src={movie.image}
+                                       alt={`${movie.title} poster`}
+                                       loading='lazy'
+                                    />
+                                 ) : (
+                                    <div className='poster-placeholder'>
+                                       <span>CINEVERSE</span>
+                                       <strong>{movie.title}</strong>
+                                    </div>
+                                 )}
+
+                                 <div className='movie-info'>
+                                    <div className='movie-title-row'>
+                                       <h3>{movie.title}</h3>
+                                       {movie.rating && (
+                                          <span className='rating'>
+                                             ★ {movie.rating}
+                                          </span>
+                                       )}
+                                    </div>
+
+                                    <p>
+                                       {movie.year ? `${movie.year} · ` : ''}
+                                       {movie.genre}
+                                    </p>
+
+                                    <button
+                                       className='recommend-button'
+                                       onClick={() =>
+                                          handleRecommend(movie.title)
+                                       }
+                                       disabled={loading}
+                                    >
+                                       {loading && selectedMovie === movie.title
+                                          ? 'Finding movies...'
+                                          : 'Find Similar Movies'}
+                                    </button>
                                  </div>
-                              )}
+                              </article>
+                           ))}
+                        </div>
 
-                              <div className='movie-info'>
-                                 <div className='movie-title-row'>
-                                    <h3>{movie.title}</h3>
-
-                                    {movie.rating && (
-                                       <span className='rating'>
-                                          ★ {movie.rating}
-                                       </span>
-                                    )}
-                                 </div>
-
-                                 <p>
-                                    {movie.year ? `${movie.year} · ` : ''}
-                                    {movie.genre}
-                                 </p>
-
-                                 <button
-                                    className='recommend-button'
-                                    onClick={() => handleRecommend(movie.title)}
-                                    disabled={loading}
-                                 >
-                                    {loading && selectedMovie === movie.title
-                                       ? 'Finding movies...'
-                                       : 'Find Similar Movies'}
-                                 </button>
-                              </div>
-                           </article>
-                        ))}
+                        <button
+                           className='carousel-arrow'
+                           onClick={() =>
+                              setCurrentIndex((index) =>
+                                 Math.min(
+                                    Math.max(0, displayMovies.length - 5),
+                                    index + 1,
+                                 ),
+                              )
+                           }
+                           disabled={currentIndex >= displayMovies.length - 5}
+                           aria-label='Next movie'
+                           title='Next movie'
+                        >
+                           &#8594;
+                        </button>
                      </div>
+
+                     <p className='carousel-counter'>
+                        {displayMovies.length === 0
+                           ? 'No movies'
+                           : `Movies ${currentIndex + 1}–${Math.min(
+                                currentIndex + 5,
+                                displayMovies.length,
+                             )} of ${displayMovies.length}`}
+                     </p>
 
                      {search.trim() && filteredMovies.length > 30 && (
                         <p className='empty-state'>
