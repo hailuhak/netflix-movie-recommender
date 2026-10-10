@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { getRecommendations } from './api';
+import { useEffect, useState } from 'react';
+import { getMovies, getRecommendations } from './api';
 import './App.css';
 
 const sampleMovies = [
@@ -47,14 +47,56 @@ const sampleMovies = [
 
 function App() {
    const [search, setSearch] = useState('');
+   const [allMovies, setAllMovies] = useState([]);
+   const [moviesLoading, setMoviesLoading] = useState(true);
+   const [moviesError, setMoviesError] = useState('');
+
    const [selectedMovie, setSelectedMovie] = useState('');
    const [recommendations, setRecommendations] = useState([]);
    const [loading, setLoading] = useState(false);
    const [error, setError] = useState('');
 
-   const filteredMovies = sampleMovies.filter((movie) =>
-      movie.title.toLowerCase().includes(search.toLowerCase()),
+   // Load the full movie dataset from Flask.
+   useEffect(() => {
+      async function loadMovies() {
+         try {
+            const titles = await getMovies();
+            setAllMovies(titles);
+         } catch (err) {
+            setMoviesError(err.message || 'Could not load movies.');
+         } finally {
+            setMoviesLoading(false);
+         }
+      }
+
+      loadMovies();
+   }, []);
+
+   // Search all movie titles, not just the featured movies.
+   const filteredMovies = allMovies.filter((title) =>
+      title.toLowerCase().includes(search.trim().toLowerCase()),
    );
+
+   // Keep the original poster cards when no search is entered.
+   // Show matching titles from the complete dataset when searching.
+   const displayMovies = search.trim()
+      ? filteredMovies.slice(0, 30).map((title) => {
+           const featuredMovie = sampleMovies.find(
+              (movie) => movie.title.toLowerCase() === title.toLowerCase(),
+           );
+
+           return (
+              featuredMovie || {
+                 id: title,
+                 title,
+                 year: null,
+                 genre: 'Movie',
+                 rating: null,
+                 image: null,
+              }
+           );
+        })
+      : sampleMovies;
 
    async function handleRecommend(movieTitle) {
       setSelectedMovie(movieTitle);
@@ -66,7 +108,7 @@ function App() {
          const data = await getRecommendations(movieTitle);
          setRecommendations(data.recommendations);
       } catch (err) {
-         setError(err.message || 'Something went wrong.');
+         setError(err.message || 'Could not fetch recommendations.');
       } finally {
          setLoading(false);
       }
@@ -88,10 +130,10 @@ function App() {
             <input
                className='search'
                type='search'
-               placeholder='Search movies...'
+               placeholder='Search all 4,803 movies...'
                value={search}
                onChange={(event) => setSearch(event.target.value)}
-               aria-label='Search movies'
+               aria-label='Search all movies'
             />
          </header>
 
@@ -99,11 +141,14 @@ function App() {
             <section className='hero' id='home'>
                <div className='hero-content'>
                   <p className='eyebrow'>YOUR NEXT FAVORITE MOVIE</p>
+
                   <h1>Discover stories worth watching.</h1>
+
                   <p>
                      Explore great movies and find your next favorite with
-                     machine-learning recommendations.
+                     personalized machine-learning recommendations.
                   </p>
+
                   <a className='primary-button' href='#movies'>
                      Explore Movies
                   </a>
@@ -113,47 +158,88 @@ function App() {
             <section className='movie-section' id='movies'>
                <div className='section-heading'>
                   <div>
-                     <p className='eyebrow'>EXPLORE THE COLLECTION</p>
-                     <h2>Popular Movies</h2>
+                     <p className='eyebrow'>
+                        {search.trim()
+                           ? 'SEARCH THE FULL COLLECTION'
+                           : 'EXPLORE THE COLLECTION'}
+                     </p>
+
+                     <h2>
+                        {search.trim() ? 'Search Results' : 'Popular Movies'}
+                     </h2>
                   </div>
-                  <span>{filteredMovies.length} titles</span>
+
+                  <span>
+                     {moviesLoading
+                        ? 'Loading...'
+                        : search.trim()
+                          ? `${filteredMovies.length} matches`
+                          : `${allMovies.length.toLocaleString()} movies`}
+                  </span>
                </div>
 
-               {filteredMovies.length > 0 ? (
-                  <div className='movie-grid'>
-                     {filteredMovies.map((movie) => (
-                        <article className='movie-card' key={movie.id}>
-                           <img
-                              src={movie.image}
-                              alt={`${movie.title} poster`}
-                              loading='lazy'
-                           />
+               {moviesLoading ? (
+                  <p role='status'>Loading your movie collection...</p>
+               ) : moviesError ? (
+                  <p className='empty-state' role='alert'>
+                     {moviesError} Please make sure the Flask backend is
+                     running.
+                  </p>
+               ) : displayMovies.length > 0 ? (
+                  <>
+                     <div className='movie-grid'>
+                        {displayMovies.map((movie) => (
+                           <article className='movie-card' key={movie.id}>
+                              {movie.image ? (
+                                 <img
+                                    src={movie.image}
+                                    alt={`${movie.title} poster`}
+                                    loading='lazy'
+                                 />
+                              ) : (
+                                 <div className='poster-placeholder'>
+                                    <span>CINEVERSE</span>
+                                    <strong>{movie.title}</strong>
+                                 </div>
+                              )}
 
-                           <div className='movie-info'>
-                              <div className='movie-title-row'>
-                                 <h3>{movie.title}</h3>
-                                 <span className='rating'>
-                                    ★ {movie.rating}
-                                 </span>
+                              <div className='movie-info'>
+                                 <div className='movie-title-row'>
+                                    <h3>{movie.title}</h3>
+
+                                    {movie.rating && (
+                                       <span className='rating'>
+                                          ★ {movie.rating}
+                                       </span>
+                                    )}
+                                 </div>
+
+                                 <p>
+                                    {movie.year ? `${movie.year} · ` : ''}
+                                    {movie.genre}
+                                 </p>
+
+                                 <button
+                                    className='recommend-button'
+                                    onClick={() => handleRecommend(movie.title)}
+                                    disabled={loading}
+                                 >
+                                    {loading && selectedMovie === movie.title
+                                       ? 'Finding movies...'
+                                       : 'Find Similar Movies'}
+                                 </button>
                               </div>
+                           </article>
+                        ))}
+                     </div>
 
-                              <p>
-                                 {movie.year} · {movie.genre}
-                              </p>
-
-                              <button
-                                 className='recommend-button'
-                                 onClick={() => handleRecommend(movie.title)}
-                                 disabled={loading}
-                              >
-                                 {loading && selectedMovie === movie.title
-                                    ? 'Finding movies...'
-                                    : 'Find Similar Movies'}
-                              </button>
-                           </div>
-                        </article>
-                     ))}
-                  </div>
+                     {search.trim() && filteredMovies.length > 30 && (
+                        <p className='empty-state'>
+                           Showing 30 results. Refine your search to find a
+                           specific movie.
+                        </p>
+                     )}
+                  </>
                ) : (
                   <p className='empty-state'>
                      No movies found. Try another title.
@@ -163,6 +249,7 @@ function App() {
 
             <section className='recommendation-section' id='recommendations'>
                <p className='eyebrow'>POWERED BY MACHINE LEARNING</p>
+
                <h2>
                   {selectedMovie
                      ? `Movies like ${selectedMovie}`
@@ -171,8 +258,8 @@ function App() {
 
                {!selectedMovie && (
                   <p>
-                     Choose a movie above to discover recommendations based on
-                     genres, keywords, cast, directors, and story similarities.
+                     Choose a movie to discover recommendations based on genres,
+                     keywords, cast, directors, and story similarities.
                   </p>
                )}
 
@@ -184,8 +271,7 @@ function App() {
 
                {error && (
                   <p role='alert'>
-                     {error} Please check that the Flask backend is running and
-                     try another movie.
+                     {error} Please try selecting the movie again.
                   </p>
                )}
 
@@ -200,6 +286,7 @@ function App() {
                               <h3>{movie.title}</h3>
                               <p>Similarity score: {movie.similarity_score}</p>
                            </div>
+
                            <span className='rating'>#{index + 1}</span>
                         </div>
                      ))}
@@ -219,6 +306,7 @@ function App() {
             <a className='logo' href='#home'>
                CINE<span>VERSE</span>
             </a>
+
             <p>Discover more. Watch better.</p>
          </footer>
       </div>

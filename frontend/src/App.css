@@ -313,3 +313,30 @@ footer p {
     padding: 25px;
   }
 }
+
+.poster-placeholder {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+  text-align: center;
+  color: #ffffff;
+  background: linear-gradient(145deg, #202b45, #101018 75%);
+  overflow: hidden;
+}
+
+.poster-placeholder span {
+  color: #e50914;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+}
+
+.poster-placeholder strong {
+  font-size: 1.15rem;
+  overflow-wrap: anywhere;
+}

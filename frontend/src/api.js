@@ -1,5 +1,15 @@
-
 const API_BASE_URL = "http://127.0.0.1:5001";
+
+export async function getMovies() {
+  const response = await fetch(`${API_BASE_URL}/movies`);
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || "Could not fetch movies.");
+  }
+
+  return data.movies;
+}
 
 export async function getRecommendations(movieTitle, limit = 5) {
   const params = new URLSearchParams({
