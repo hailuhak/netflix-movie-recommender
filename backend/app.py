@@ -1,10 +1,11 @@
 
 import pickle
 from pathlib import Path
-
 from flask import Flask, jsonify, request
+from flask_cors import CORS
 
 app = Flask(__name__)
+CORS(app)
 
 # Find the project root directory
 BASE_DIR = Path(__file__).resolve().parent.parent
