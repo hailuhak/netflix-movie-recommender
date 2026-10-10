@@ -1,0 +1,22 @@
+
+# Python virtual environment
+.venv/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# Generated recommendation models
+movie_list.pkl
+similarity.pkl
+
+# Environment secrets
+.env
+
+# Dataset files (download separately)
+data/*.csv
+data/*.zip
+data copy/
