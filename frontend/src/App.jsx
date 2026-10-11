@@ -1,67 +1,25 @@
 import { useEffect, useState } from 'react';
-import { getMovies, getRecommendations } from './api';
+import { getMovies, getMovieDetailsByTitle, getRecommendations } from './api';
 import './App.css';
-
-const sampleMovies = [
-   {
-      id: 1,
-      title: 'Inception',
-      year: 2010,
-      genre: 'Sci-Fi · Thriller',
-      rating: '8.8',
-      image: 'https://image.tmdb.org/t/p/w500/oYuLEt3zVCKq57qu2F8dT7NIa6f.jpg',
-   },
-   {
-      id: 2,
-      title: 'The Dark Knight',
-      year: 2008,
-      genre: 'Action · Crime',
-      rating: '9.0',
-      image: 'https://image.tmdb.org/t/p/w500/qJ2tW6WMUDux911r6m7haRef0WH.jpg',
-   },
-   {
-      id: 3,
-      title: 'Interstellar',
-      year: 2014,
-      genre: 'Sci-Fi · Drama',
-      rating: '8.7',
-      image: 'https://image.tmdb.org/t/p/w500/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg',
-   },
-   {
-      id: 4,
-      title: 'Avatar',
-      year: 2009,
-      genre: 'Adventure · Sci-Fi',
-      rating: '7.9',
-      image: 'https://image.tmdb.org/t/p/w500/kyeqWdyUXW608qlYkRqosgbbJyK.jpg',
-   },
-   {
-      id: 5,
-      title: 'The Matrix',
-      year: 1999,
-      genre: 'Sci-Fi · Action',
-      rating: '8.7',
-      image: 'https://image.tmdb.org/t/p/w500/f89U3ADr1oiB1s9GkdPOEpXUk5H.jpg',
-   },
-];
 
 function App() {
    const [search, setSearch] = useState('');
    const [allMovies, setAllMovies] = useState([]);
+   const [movieDetails, setMovieDetails] = useState({});
    const [moviesLoading, setMoviesLoading] = useState(true);
    const [moviesError, setMoviesError] = useState('');
    const [currentIndex, setCurrentIndex] = useState(0);
+
    const [selectedMovie, setSelectedMovie] = useState('');
    const [recommendations, setRecommendations] = useState([]);
    const [loading, setLoading] = useState(false);
    const [error, setError] = useState('');
 
+   useEffect(() => {
+      setCurrentIndex(0);
+   }, [search]);
 
-  useEffect(() => {
-     setCurrentIndex(0);
-  }, [search]);
-
-   // Load the full movie dataset from Flask.
+   // Load movie titles from Flask.
    useEffect(() => {
       async function loadMovies() {
          try {
@@ -77,35 +35,83 @@ function App() {
       loadMovies();
    }, []);
 
-   // Search all movie titles, not just the featured movies.
    const filteredMovies = allMovies.filter((title) =>
       title.toLowerCase().includes(search.trim().toLowerCase()),
    );
 
-   // Keep the original poster cards when no search is entered.
-   // Show matching titles from the complete dataset when searching.
+   const titlesToDisplay = search.trim() ? filteredMovies : allMovies;
 
-const titlesToDisplay = search.trim() ? filteredMovies : allMovies;
+   // Only prepare the five movies currently visible.
+   const visibleMovies = titlesToDisplay
+      .slice(currentIndex, currentIndex + 5)
+      .map((title) => {
+         const details = movieDetails[title.toLowerCase()];
 
-const displayMovies = titlesToDisplay.map((title) => {
-   const featuredMovie = sampleMovies.find(
-      (movie) => movie.title.toLowerCase() === title.toLowerCase(),
-   );
+         return {
+            id: title,
+            title,
+            poster_url: details?.poster_url || null,
+            genres: details?.genres || 'Loading movie details...',
+            overview: details?.overview || '',
+            rating: details?.rating ?? null,
+            release_date: details?.release_date || null,
+            cast: details?.cast || '',
+            director: details?.director || '',
+         };
+      });
 
-   return (
-      featuredMovie || {
-         id: title,
-         title,
-         year: null,
-         genre: 'Movie',
-         rating: null,
-         image: null,
+   // Fetch metadata only for movies currently visible.
+   const visibleTitlesKey = visibleMovies.map((movie) => movie.title).join('|');
+
+   useEffect(() => {
+      let cancelled = false;
+
+      async function loadVisibleDetails() {
+         const titles = visibleTitlesKey ? visibleTitlesKey.split('|') : [];
+
+         const missingTitles = [
+            ...new Set(
+               titles.filter((title) => !movieDetails[title.toLowerCase()]),
+            ),
+         ];
+
+         await Promise.all(
+            missingTitles.map(async (title) => {
+               try {
+                  const details = await getMovieDetailsByTitle(title);
+
+                  if (!cancelled) {
+                     setMovieDetails((previous) => ({
+                        ...previous,
+                        [title.toLowerCase()]: details,
+                     }));
+                  }
+               } catch {
+                  // Keep the movie visible even if metadata is unavailable.
+                  if (!cancelled) {
+                     setMovieDetails((previous) => ({
+                        ...previous,
+                        [title.toLowerCase()]: {
+                           title,
+                           poster_url: null,
+                           genres: 'Movie information unavailable',
+                           overview: '',
+                           rating: null,
+                           release_date: null,
+                        },
+                     }));
+                  }
+               }
+            }),
+         );
       }
-   );
-});
 
-const visibleMovies = displayMovies.slice(currentIndex, currentIndex + 5);
+      loadVisibleDetails();
 
+      return () => {
+         cancelled = true;
+      };
+   }, [visibleTitlesKey, movieDetails]);
 
    async function handleRecommend(movieTitle) {
       setSelectedMovie(movieTitle);
@@ -115,12 +121,85 @@ const visibleMovies = displayMovies.slice(currentIndex, currentIndex + 5);
 
       try {
          const data = await getRecommendations(movieTitle);
-         setRecommendations(data.recommendations);
+
+         setRecommendations(data.recommendations || []);
+
+         // Cache the selected movie's metadata if returned by the API.
+         if (data.requested_movie) {
+            setMovieDetails((previous) => ({
+               ...previous,
+               [movieTitle.toLowerCase()]: data.requested_movie,
+            }));
+         }
+
+         // Cache recommendation details for future browsing.
+         if (data.recommendations) {
+            setMovieDetails((previous) => {
+               const updated = { ...previous };
+
+               data.recommendations.forEach((movie) => {
+                  updated[movie.title.toLowerCase()] = {
+                     ...updated[movie.title.toLowerCase()],
+                     ...movie,
+                  };
+               });
+
+               return updated;
+            });
+         }
+
+         document
+            .getElementById('recommendations')
+            ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       } catch (err) {
          setError(err.message || 'Could not fetch recommendations.');
       } finally {
          setLoading(false);
       }
+   }
+
+   function renderPoster(movie, className = 'movie-poster') {
+      if (movie.poster_url) {
+         return (
+            <img
+               className={className}
+               src={movie.poster_url}
+               alt={`${movie.title} poster`}
+               loading='lazy'
+            />
+         );
+      }
+
+      return (
+         <div className='poster-placeholder'>
+            <span>CINEVERSE</span>
+            <strong>{movie.title}</strong>
+            <small>Poster unavailable</small>
+         </div>
+      );
+   }
+
+   function renderMovieInfo(movie) {
+      const year = movie.release_date ? movie.release_date.slice(0, 4) : null;
+
+      return (
+         <>
+            <div className='movie-title-row'>
+               <h3>{movie.title}</h3>
+
+               {movie.rating != null && (
+                  <span className='rating'>
+                     ★ {Number(movie.rating).toFixed(1)}
+                  </span>
+               )}
+            </div>
+
+            <p className='movie-meta'>
+               {year ? `${year} · ` : ''}
+               {movie.genres || 'Movie'}
+            </p>
+         </>
+      );
    }
 
    return (
@@ -191,10 +270,9 @@ const visibleMovies = displayMovies.slice(currentIndex, currentIndex + 5);
                   <p role='status'>Loading your movie collection...</p>
                ) : moviesError ? (
                   <p className='empty-state' role='alert'>
-                     {moviesError} Please make sure the Flask backend is
-                     running.
+                     {moviesError} Please make sure Flask is running.
                   </p>
-               ) : displayMovies.length > 0 ? (
+               ) : titlesToDisplay.length > 0 ? (
                   <>
                      <div className='movie-carousel'>
                         <button
@@ -212,33 +290,10 @@ const visibleMovies = displayMovies.slice(currentIndex, currentIndex + 5);
                         <div className='movie-grid'>
                            {visibleMovies.map((movie) => (
                               <article className='movie-card' key={movie.id}>
-                                 {movie.image ? (
-                                    <img
-                                       src={movie.image}
-                                       alt={`${movie.title} poster`}
-                                       loading='lazy'
-                                    />
-                                 ) : (
-                                    <div className='poster-placeholder'>
-                                       <span>CINEVERSE</span>
-                                       <strong>{movie.title}</strong>
-                                    </div>
-                                 )}
+                                 {renderPoster(movie)}
 
                                  <div className='movie-info'>
-                                    <div className='movie-title-row'>
-                                       <h3>{movie.title}</h3>
-                                       {movie.rating && (
-                                          <span className='rating'>
-                                             ★ {movie.rating}
-                                          </span>
-                                       )}
-                                    </div>
-
-                                    <p>
-                                       {movie.year ? `${movie.year} · ` : ''}
-                                       {movie.genre}
-                                    </p>
+                                    {renderMovieInfo(movie)}
 
                                     <button
                                        className='recommend-button'
@@ -261,12 +316,12 @@ const visibleMovies = displayMovies.slice(currentIndex, currentIndex + 5);
                            onClick={() =>
                               setCurrentIndex((index) =>
                                  Math.min(
-                                    Math.max(0, displayMovies.length - 5),
+                                    Math.max(0, titlesToDisplay.length - 5),
                                     index + 1,
                                  ),
                               )
                            }
-                           disabled={currentIndex >= displayMovies.length - 5}
+                           disabled={currentIndex >= titlesToDisplay.length - 5}
                            aria-label='Next movie'
                            title='Next movie'
                         >
@@ -275,20 +330,10 @@ const visibleMovies = displayMovies.slice(currentIndex, currentIndex + 5);
                      </div>
 
                      <p className='carousel-counter'>
-                        {displayMovies.length === 0
-                           ? 'No movies'
-                           : `Movies ${currentIndex + 1}–${Math.min(
-                                currentIndex + 5,
-                                displayMovies.length,
-                             )} of ${displayMovies.length}`}
+                        Movies {currentIndex + 1}–
+                        {Math.min(currentIndex + 5, titlesToDisplay.length)} of{' '}
+                        {titlesToDisplay.length}
                      </p>
-
-                     {search.trim() && filteredMovies.length > 30 && (
-                        <p className='empty-state'>
-                           Showing 30 results. Refine your search to find a
-                           specific movie.
-                        </p>
-                     )}
                   </>
                ) : (
                   <p className='empty-state'>
@@ -319,26 +364,44 @@ const visibleMovies = displayMovies.slice(currentIndex, currentIndex + 5);
                   </p>
                )}
 
-               {error && (
-                  <p role='alert'>
-                     {error} Please try selecting the movie again.
-                  </p>
-               )}
+               {error && <p role='alert'>{error}</p>}
 
                {!loading && !error && recommendations.length > 0 && (
-                  <div className='recommendation-list'>
+                  <div className='recommendation-grid'>
                      {recommendations.map((movie, index) => (
-                        <div
-                           className='recommendation-item'
-                           key={`${movie.title}-${index}`}
+                        <article
+                           className='recommendation-card'
+                           key={`${movie.id}-${movie.title}`}
                         >
-                           <div>
-                              <h3>{movie.title}</h3>
-                              <p>Similarity score: {movie.similarity_score}</p>
-                           </div>
+                           {renderPoster(movie, 'recommendation-poster')}
 
-                           <span className='rating'>#{index + 1}</span>
-                        </div>
+                           <div className='recommendation-info'>
+                              {renderMovieInfo(movie)}
+
+                              <p className='similarity-score'>
+                                 Similarity score:{' '}
+                                 {Number(movie.similarity_score).toFixed(3)}
+                              </p>
+
+                              {movie.overview && (
+                                 <p className='recommendation-overview'>
+                                    {movie.overview}
+                                 </p>
+                              )}
+
+                              <span className='recommendation-rank'>
+                                 #{index + 1}
+                              </span>
+
+                              <button
+                                 className='recommend-button'
+                                 onClick={() => handleRecommend(movie.title)}
+                                 disabled={loading}
+                              >
+                                 Find Similar Movies
+                              </button>
+                           </div>
+                        </article>
                      ))}
                   </div>
                )}

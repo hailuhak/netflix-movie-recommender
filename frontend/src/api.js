@@ -1,14 +1,29 @@
+
 const API_BASE_URL = "http://127.0.0.1:5001";
 
-export async function getMovies() {
-  const response = await fetch(`${API_BASE_URL}/movies`);
+async function fetchJSON(url) {
+  const response = await fetch(url);
   const data = await response.json();
 
   if (!response.ok) {
-    throw new Error(data.error || "Could not fetch movies.");
+    throw new Error(data.error || "Could not fetch data.");
   }
 
+  return data;
+}
+
+export async function getMovies() {
+  const data = await fetchJSON(`${API_BASE_URL}/movies`);
   return data.movies;
+}
+
+export async function getMovieDetailsByTitle(title) {
+  const params = new URLSearchParams({ title });
+  const data = await fetchJSON(
+    `${API_BASE_URL}/movie-by-title?${params.toString()}`,
+  );
+
+  return data.movie;
 }
 
 export async function getRecommendations(movieTitle, limit = 5) {
@@ -17,15 +32,5 @@ export async function getRecommendations(movieTitle, limit = 5) {
     limit: String(limit),
   });
 
-  const response = await fetch(
-    `${API_BASE_URL}/recommend?${params.toString()}`,
-  );
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data.error || "Could not fetch recommendations.");
-  }
-
-  return data;
+  return fetchJSON(`${API_BASE_URL}/recommend?${params.toString()}`);
 }
